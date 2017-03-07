@@ -722,6 +722,19 @@ class TLSRecordLayer(object):
                                 yield result
                             continue
 
+                    # If we received a heartbeat request ...
+                    if recordHeader.type == ContentType.heartbeat:
+                        try:
+                            heartbeat_request = Heartbeat().parse(p)
+                            #We answer with heartbeat response based on request
+                            heartbeat_response = heartbeat_request.\
+                                createResponse()
+                            for result in self._sendMsg(heartbeat_response):
+                                yield result
+                        except socket.error:
+                            pass
+                        continue
+
                     #Otherwise: this is an unexpected record, but neither an
                     #alert nor renegotiation
                     for result in self._sendError(\
@@ -912,3 +925,40 @@ class TLSRecordLayer(object):
 
     def _changeReadState(self):
         self._recordLayer.changeReadState()
+
+    def writeHeartbeat(self, payload, padding_length):
+        """Start a write operation of heartbeat_request.
+
+        @type payload_length: int
+        @param payload_length: Length of payload.
+
+        @type payload: bytes
+        @param payload: Payload, that we want send in request and
+                        get at response.
+
+        @raise socket.error: If a socket error occurs.
+        """
+        if self.closed:
+            raise TLSClosedConnectionError(
+                "attempt to write to closed connection")
+        heartbeat_request = Heartbeat().create(
+            HeartbeatExtensionMessages.request, payload, padding_length)
+
+        for result in self._sendMsg(heartbeat_request,
+                                    randomizeFirstBlock=False):
+            yield result
+
+    def sendHeartbeatRequest(self, payload, padding_length):
+        """Sends heartbeat_request.
+
+        @type payload_length: int
+        @param payload_length: Length of payload.
+
+        @type payload: bytes
+        @param payload: Payload, that we want send in request and
+                        get at response.
+
+        @raise socket.error: If a socket error occurs.
+        """
+        for _ in self.writeHeartbeat(payload, padding_length):
+            pass
